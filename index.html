@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تطبيق النخيل الفندقي</title>
+<link href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@500;600&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head><body>
+<header class="hero"><div class="wrap">
+<nav><a href="#about">عن الفندق</a><a href="#rooms">الغرف</a><a href="#features">المميزات</a><a href="#book">احجز</a><a href="#track">تتبع الحجز</a><a href="#contact">تواصل</a></nav>
+<img id="logo" alt="" hidden><h1 id="nm">تطبيق النخيل</h1><p id="ds"></p>
+<a class="btn" href="#book">احجز الآن</a> <a class="btn o" href="#track">تتبع حجزك</a>
+</div></header>
+<div class="wrap" id="setup" hidden><div class="note"><b>التطبيق غير مربوط بـ Firebase بعد.</b><br>افتح الملف <code>firebase-config.js</code> وضع إعدادات مشروعك، ثم أعد تحميل الصفحة. الخطوات الكاملة في README.md.</div></div>
+<main class="wrap" id="main">
+<section id="about" hidden><h2>عن الفندق</h2><p id="ab" style="white-space:pre-wrap;max-width:70ch"></p></section>
+<section id="rooms" hidden><h2>الغرف والأجنحة</h2><div class="g" id="rg"></div></section>
+<section id="features" hidden><h2>الخدمات والمميزات</h2><div class="g" id="fg"></div></section>
+<section id="book" hidden><h2>طلب حجز</h2><div class="card"><div id="bf">
+<div class="two"><div class="f"><label>الاسم</label><input id="bn" maxlength="100"></div><div class="f"><label>رقم الهاتف</label><input id="bp" type="tel" maxlength="20"></div></div>
+<div class="f"><label>البريد الإلكتروني (اختياري)</label><input id="be" type="email"></div>
+<div class="two"><div class="f"><label>تاريخ الوصول</label><input id="ba" type="date"></div><div class="f"><label>تاريخ المغادرة</label><input id="bd" type="date"></div></div>
+<div class="two"><div class="f"><label>عدد النزلاء</label><input id="bg" type="number" min="1" value="1"></div><div class="f"><label>عدد الغرف</label><input id="br" type="number" min="1" value="1"></div></div>
+<div class="f"><label>نوع الغرفة</label><select id="bt"></select></div>
+<div id="bx"></div>
+<div class="f"><label>ملاحظات</label><textarea id="bo" rows="2" maxlength="500"></textarea></div>
+<p id="est" class="pr"></p><p class="mu">الحجز يبقى قيد المراجعة حتى تؤكده الإدارة.</p><br>
+<button class="btn" id="sb">أرسل الطلب</button></div>
+<div id="done" hidden><h3>تم استلام طلبك</h3><p>رقمك المرجعي: <b id="rf" style="font-size:22px;color:var(--date)"></b></p><p class="mu">احتفظ بالرقم لمتابعة حالة الحجز.</p></div></div></section>
+<section id="track"><h2>متابعة حالة الحجز</h2><div class="card"><div class="two"><div class="f"><label>الرقم المرجعي</label><input id="tr"></div><div class="f"><label>رقم الهاتف المستخدم في الحجز</label><input id="tp" type="tel"></div></div><button class="btn" id="tb">عرض الحالة</button><div id="tres" style="margin-top:14px"></div></div></section>
+<section id="contact" hidden><h2>التواصل والموقع</h2><div class="card" id="ct"></div></section>
+<section id="pol" hidden><h2>السياسات والشروط</h2><p id="pl" style="white-space:pre-wrap;max-width:70ch"></p></section>
+</main>
+<footer>تطوير وتنفيذ NEXORA</footer>
+<script type="module">
+import {db,ready,esc,url,money,nights,ST} from './app.js';
+import {doc,getDoc,getDocs,collection,setDoc,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+const $=s=>document.querySelector(s),show=(id,v=true)=>{$(id).hidden=!v};
+if(!ready){show('#setup');$('#main').hidden=true}else{
+const S=(await getDoc(doc(db,'settings','hotel'))).data()||{},cur=S.currency||'';
+const rows=async c=>(await getDocs(collection(db,c))).docs.map(d=>({id:d.id,...d.data()}));
+const T=(await rows('roomTypes')).filter(r=>r.active),F=(await rows('features')).filter(r=>r.active);
+if(S.name){$('#nm').textContent=S.name;document.title=S.name}
+$('#ds').textContent=S.shortDesc||'';
+if(url(S.logo)){$('#logo').src=url(S.logo);show('#logo')}
+if(S.desc){$('#ab').textContent=S.desc;show('#about')}
+if(S.policies){$('#pl').textContent=S.policies;show('#pol')}
+const im=u=>url(u)?`<img class="im" src="${esc(url(u))}" alt="" loading="lazy">`:`<div class="im"></div>`;
+if(T.length){show('#rooms');show('#book');
+$('#rg').innerHTML=T.map(r=>`<div class="rc">${im(r.image)}<h3>${esc(r.name)}</h3><p>${esc(r.desc)}</p><p>${r.guests?r.guests+' نزلاء':''} ${r.beds?'· '+r.beds+' أسرّة':''} ${r.area?'· '+r.area+' م²':''}</p><div class="pr">${money(r.price,cur)} / الليلة</div></div>`).join('');
+$('#bt').innerHTML=T.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}
+if(F.length){show('#features');
+$('#fg').innerHTML=F.map(f=>`<div class="rc">${im(f.image)}<h3>${esc(f.name)}</h3><p>${esc(f.desc)}</p><div class="pr">${f.free?'مجانية':money(f.price,cur)}</div></div>`).join('');
+const B=F.filter(f=>f.atBooking);$('#bx').innerHTML=B.length?'<label class="mu">مميزات إضافية</label>'+B.map(f=>`<label class="ck"><input type="checkbox" value="${esc(f.id)}"> ${esc(f.name)} (${f.free?'مجانية':money(f.price,cur)})</label>`).join(''):''}
+const ct=[S.phone&&`<p>الهاتف: <a href="tel:${esc(S.phone)}">${esc(S.phone)}</a></p>`,S.email&&`<p>البريد: <a href="mailto:${esc(S.email)}">${esc(S.email)}</a></p>`,S.address&&`<p>${esc(S.address)}</p>`,url(S.mapUrl)&&`<p><a class="btn s" href="${esc(url(S.mapUrl))}" target="_blank" rel="noopener">افتح الموقع على الخريطة</a></p>`,(S.checkIn||S.checkOut)&&`<p class="mu">تسجيل الوصول: ${esc(S.checkIn||'—')} · المغادرة: ${esc(S.checkOut||'—')}</p>`].filter(Boolean);
+if(ct.length){$('#ct').innerHTML=ct.join('');show('#contact')}
+const sel=()=>[...document.querySelectorAll('#bx input:checked')].map(i=>i.value);
+function calc(){const t=T.find(r=>r.id==$('#bt').value),a=$('#ba').value,d=$('#bd').value;if(!t||!a||!d||d<=a){$('#est').textContent='';return 0}
+const n=nights(a,d),rc=Math.max(1,+$('#br').value||1),x=sel().reduce((s,i)=>s+(F.find(f=>f.id==i)?.free?0:+F.find(f=>f.id==i)?.price||0),0),tot=n*t.price*rc+x;
+$('#est').textContent=`التكلفة التقديرية: ${money(tot,cur)} (${n} ليلة)`;return tot}
+document.querySelectorAll('#bf input,#bf select').forEach(e=>e.oninput=calc);
+$('#ba').min=new Date().toISOString().slice(0,10);
+$('#sb').onclick=async()=>{const v=i=>$(i).value.trim(),a=v('#ba'),d=v('#bd');
+if(!v('#bn')||v('#bp').length<6)return alert('أدخل الاسم ورقم هاتف صحيحًا');
+if(!a||!d||d<=a)return alert('تأكد أن تاريخ المغادرة بعد تاريخ الوصول');
+const ref=[...crypto.getRandomValues(new Uint8Array(10))].map(b=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b%32]).join('');
+try{await setDoc(doc(db,'bookings',ref),{name:v('#bn'),phone:v('#bp'),email:v('#be'),arrive:a,depart:d,guests:+v('#bg')||1,rooms:+v('#br')||1,typeId:v('#bt'),featureIds:sel(),notes:v('#bo'),status:'new',paid:0,total:calc(),createdAt:serverTimestamp()});
+$('#rf').textContent=ref;show('#bf',false);show('#done')}catch(e){alert('تعذر إرسال الطلب، حاول مرة أخرى.')}};
+$('#tb').onclick=async()=>{const r=$('#tr').value.trim().toUpperCase(),o=$('#tres');o.textContent='';
+try{const b=(await getDoc(doc(db,'bookings',r))).data();
+if(!b||b.phone!==$('#tp').value.trim())return o.innerHTML='<p class="mu">لا يوجد حجز بهذه البيانات. تأكد من الرقم المرجعي والهاتف.</p>';
+o.innerHTML=`<p>الحالة: <span class="pill">${ST[b.status]||''}</span></p><p>${esc(b.arrive)} ← ${esc(b.depart)}</p><p>الإجمالي: ${money(b.total,cur)} · المدفوع: ${money(b.paid,cur)}</p>`}
+catch(e){o.innerHTML='<p class="mu">لا يوجد حجز بهذه البيانات.</p>'}}}
+</script></body></html>

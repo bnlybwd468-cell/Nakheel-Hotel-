@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>لوحة إدارة الفندق</title>
+<link href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@500;600&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head><body>
+<div id="lg" class="wrap" style="max-width:380px;padding-top:60px"><h1 style="color:var(--palm)">دخول الإدارة</h1><br>
+<div id="msg" class="note" hidden></div>
+<div class="card" id="lf"><div class="f"><label>البريد الإلكتروني</label><input id="em" type="email" autocomplete="username"></div><div class="f"><label>كلمة المرور</label><input id="pw" type="password" autocomplete="current-password"></div><button class="btn" id="go">دخول</button></div>
+<p style="margin-top:14px"><a href="index.html" class="mu">العودة للموقع</a></p></div>
+<div id="ap" hidden><div class="tabs" id="tb"></div><div class="wrap" style="padding-top:22px;padding-bottom:50px" id="v"></div></div>
+<dialog id="dg"></dialog>
+<script type="module">
+import {auth,db,ready,esc,money,nights,ST} from './app.js';
+import {signInWithEmailAndPassword,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {doc,getDoc,getDocs,collection,setDoc,addDoc,updateDoc,deleteDoc,arrayUnion} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+const $=s=>document.querySelector(s),all=async c=>(await getDocs(collection(db,c))).docs.map(d=>({id:d.id,...d.data()}));
+const note=t=>{$('#msg').hidden=!t;$('#msg').innerHTML=t||''};
+if(!ready){note('لم يتم ضبط Firebase. عدّل الملف <code>firebase-config.js</code> أولًا.');$('#lf').hidden=true}
+let me,cfg={},tab='dash';
+const can=p=>me.role=='owner'||me[p]===true;
+const TABS=[['dash','الرئيسية'],['bookings','الحجوزات','bookings'],['roomTypes','أنواع الغرف','rooms'],['rooms','الغرف الفعلية','rooms'],['features','المميزات','features'],['settings','إعدادات الفندق','settings'],['admins','الموظفون','owner']];
+const RS='sel:available=متاحة|occupied=مشغولة|cleaning=تحتاج تنظيف|maintenance=صيانة';
+const SCH={
+roomTypes:{t:'أنواع الغرف',f:[['name','اسم النوع'],['price','السعر لليلة','number'],['guests','عدد النزلاء','number'],['beds','عدد الأسرّة','number'],['area','المساحة (م²)','number'],['image','رابط الصورة'],['desc','الوصف','textarea'],['active','معروض للعملاء','check']]},
+rooms:{t:'الغرف الفعلية',f:[['number','رقم أو اسم الغرفة'],['typeId','نوع الغرفة','ref:roomTypes'],['status','الحالة',RS],['bookable','قابلة للحجز','check']]},
+features:{t:'المميزات والخدمات',f:[['name','الاسم'],['desc','الوصف','textarea'],['image','رابط الصورة'],['free','مجانية','check'],['price','السعر','number'],['terms','شروط الاستخدام','textarea'],['atBooking','يمكن طلبها عند الحجز','check'],['active','متاحة','check']]},
+admins:{t:'الموظفون',f:[['_id','معرّف المستخدم (UID)'],['label','الاسم'],['role','الدور','sel:staff=موظف|owner=مالك'],['bookings','إدارة الحجوزات','check'],['rooms','إدارة الغرف','check'],['features','إدارة المميزات','check'],['settings','إعدادات الفندق','check']]},
+settings:{f:[['name','اسم الفندق'],['shortDesc','عبارة تعريفية قصيرة'],['logo','رابط الشعار'],['desc','وصف الفندق','textarea'],['phone','الهاتف','tel'],['email','البريد الإلكتروني','email'],['address','العنوان'],['mapUrl','رابط الموقع على الخريطة'],['currency','العملة (مثال: ج.م)'],['checkIn','وقت تسجيل الوصول','time'],['checkOut','وقت المغادرة','time'],['policies','السياسات والشروط','textarea']]}};
+function fh([k,l,t='text'],v,O){v=v??(['active','bookable','atBooking'].includes(k)?true:'');let x;
+if(t=='check')return `<label class="ck"><input type="checkbox" id="f_${k}" ${v?'checked':''}> ${l}</label>`;
+if(t=='textarea')x=`<textarea id="f_${k}" rows="3">${esc(v)}</textarea>`;
+else if(/^(sel|ref):/.test(t)){const o=t[0]=='r'?(O[t.slice(4)]||[]).map(r=>[r.id,r.name]):t.slice(4).split('|').map(s=>s.split('='));
+x=`<select id="f_${k}">${o.map(([a,b])=>`<option value="${esc(a)}" ${a==v?'selected':''}>${esc(b)}</option>`).join('')}</select>`}
+else x=`<input id="f_${k}" type="${t}" value="${esc(v)}">`;
+return `<div class="f"><label>${l}</label>${x}</div>`}
+const gather=F=>Object.fromEntries(F.map(([k,,t])=>{const e=$('#f_'+k);return[k,t=='check'?e.checked:t=='number'?+e.value||0:e.value.trim()]}));
+const dlg=h=>{$('#dg').innerHTML=h;$('#dg').showModal()};
+const acts=`<div class="bar"><button class="btn" id="sv">حفظ</button><button class="btn o" style="color:var(--ink)" id="cx">إلغاء</button></div>`;
+const T0=new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const sum=(a,f)=>a.reduce((s,x)=>s+f(x),0);
+async function crud(c){const s=SCH[c],O={roomTypes:await all('roomTypes')},rows=await all(c);
+$('#v').innerHTML=`<div class="bar"><h2>${s.t}</h2><button class="btn" id="add">إضافة</button></div>`+(rows.length?`<div class="tw"><table>${rows.map(r=>`<tr><td><b>${esc(r.name||r.number||r.label||r.id)}</b><div class="mu">${c=='rooms'?esc(O.roomTypes.find(t=>t.id==r.typeId)?.name||''):c=='admins'?esc(r.role):esc(r.price!=null?money(r.price,cfg.currency):'')}</div></td><td style="text-align:left"><button class="btn s" data-e="${esc(r.id)}">تعديل</button> <button class="btn s d" data-x="${esc(r.id)}">حذف</button></td></tr>`).join('')}</table></div>`:`<p class="empty">لا توجد عناصر بعد. اضغط «إضافة» للبدء.</p>`);
+const open=row=>{if(c=='admins'&&row)row._id=row.id;dlg(`<h3>${row?'تعديل':'إضافة'}</h3><br>${s.f.map(f=>fh(f,row?.[f[0]],O)).join('')}${acts}`);
+$('#cx').onclick=()=>$('#dg').close();
+$('#sv').onclick=async()=>{const v=gather(s.f);if(!v[s.f[0][0]])return alert('الحقل الأول مطلوب');
+try{if(c=='admins'){const id=v._id;delete v._id;await setDoc(doc(db,c,id),v)}else if(row)await setDoc(doc(db,c,row.id),v,{merge:true});else await addDoc(collection(db,c),v);
+$('#dg').close();render()}catch(e){alert('تعذر الحفظ: '+e.message)}}};
+$('#add').onclick=()=>open();
+$('#v').onclick=async e=>{const b=e.target.closest('button');if(!b)return;
+if(b.dataset.e)open(rows.find(r=>r.id==b.dataset.e));
+if(b.dataset.x&&confirm('هل تريد الحذف نهائيًا؟')){try{await deleteDoc(doc(db,c,b.dataset.x));render()}catch(e){alert('تعذر الحذف: '+e.message)}}}}
+async function settings(){const d=(await getDoc(doc(db,'settings','hotel'))).data()||{},F=SCH.settings.f;
+$('#v').innerHTML=`<h2>إعدادات الفندق</h2><div class="card">${F.map(f=>fh(f,d[f[0]])).join('')}<button class="btn" id="sv">حفظ الإعدادات</button></div>`;
+$('#sv').onclick=async()=>{try{await setDoc(doc(db,'settings','hotel'),gather(F),{merge:true});cfg=gather(F);alert('تم الحفظ')}catch(e){alert('تعذر الحفظ: '+e.message)}}}
+async function dash(){const [R,B]=await Promise.all([all('rooms'),all('bookings')]),live=['confirmed','checkin','checkout'],ok=B.filter(b=>!['cancelled','rejected'].includes(b.status));
+const C=[['إجمالي الغرف',R.length],['المتاحة',R.filter(r=>r.status=='available').length],['المشغولة',R.filter(r=>r.status=='occupied').length],['حجوزات جديدة',B.filter(b=>b.status=='new').length],['قيد المراجعة',B.filter(b=>b.status=='review').length],['حجوزات مؤكدة',B.filter(b=>b.status=='confirmed').length],['وصول اليوم',B.filter(b=>b.arrive==T0&&b.status=='confirmed').length],['مغادرة اليوم',B.filter(b=>b.depart==T0&&b.status=='checkin').length],['الإيرادات المحصّلة',money(sum(ok,b=>+b.paid||0),cfg.currency)],['المبالغ المستحقة',money(sum(B.filter(b=>live.includes(b.status)),b=>Math.max(0,(+b.total||0)-(+b.paid||0))),cfg.currency)]];
+$('#v').innerHTML=`<h2>لوحة المعلومات</h2><div class="st">${C.map(([l,v])=>`<div class="card"><span class="mu">${l}</span><b>${v}</b></div>`).join('')}</div><p class="mu" style="margin-top:14px">كل الأرقام محسوبة من قاعدة البيانات مباشرة، والمحصّل منفصل عن المستحق.</p>`}
+async function bookings(){const [B,R,Ty]=await Promise.all([all('bookings'),all('rooms'),all('roomTypes')]);B.sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
+const flt=window._f||'';const L=B.filter(b=>!flt||b.status==flt);
+$('#v').innerHTML=`<div class="bar"><h2>الحجوزات</h2><select id="ff" style="width:auto"><option value="">كل الحالات</option>${Object.entries(ST).map(([k,v])=>`<option value="${k}" ${flt==k?'selected':''}>${v}</option>`).join('')}</select></div>`+(L.length?`<div class="tw"><table><tr><th>المرجع</th><th>النزيل</th><th>الفترة</th><th>الحالة</th><th>المتبقي</th></tr>${L.map(b=>`<tr data-b="${esc(b.id)}" style="cursor:pointer"><td>${esc(b.id)}</td><td>${esc(b.name)}<div class="mu">${esc(b.phone)}</div></td><td>${esc(b.arrive)} ← ${esc(b.depart)}</td><td><span class="pill">${ST[b.status]||''}</span></td><td>${money((+b.total||0)-(+b.paid||0),cfg.currency)}</td></tr>`).join('')}</table></div>`:'<p class="empty">لا توجد حجوزات بعد.</p>');
+$('#ff').onchange=e=>{window._f=e.target.value;bookings()};
+$('#v').onclick=e=>{const r=e.target.closest('[data-b]');if(!r)return;const b=B.find(x=>x.id==r.dataset.b),t=Ty.find(x=>x.id==b.typeId);
+const rs=R.filter(x=>x.typeId==b.typeId);
+dlg(`<h3>${esc(b.id)}</h3><p>${esc(b.name)} · ${esc(b.phone)} ${b.email?'· '+esc(b.email):''}</p><p class="mu">${esc(t?.name||'—')} · ${b.guests} نزلاء · ${b.rooms||1} غرف · ${nights(b.arrive,b.depart)} ليلة</p>${b.notes?`<p>ملاحظات: ${esc(b.notes)}</p>`:''}<br>
+<div class="f"><label>الحالة</label><select id="bs">${Object.entries(ST).map(([k,v])=>`<option value="${k}" ${b.status==k?'selected':''}>${v}</option>`).join('')}</select></div>
+<div class="f"><label>الغرفة المخصّصة</label><select id="brm"><option value="">— بدون —</option>${rs.map(x=>`<option value="${esc(x.id)}" ${b.roomId==x.id?'selected':''}>${esc(x.number)}</option>`).join('')}</select></div>
+<div class="f"><label>المبلغ المدفوع (من ${money(b.total,cfg.currency)})</label><input id="bpd" type="number" min="0" value="${+b.paid||0}"></div>
+${(b.history||[]).length?`<p class="mu">آخر تعديل: ${esc(b.history.at(-1).by)}</p>`:''}${acts}`);
+$('#cx').onclick=()=>$('#dg').close();
+$('#sv').onclick=async()=>{const st=$('#bs').value,rid=$('#brm').value,paid=+$('#bpd').value||0,hold=['confirmed','checkin'].includes(st);
+if(hold&&!rid)return alert('خصّص غرفة قبل التأكيد');
+if(hold&&B.some(o=>o.id!=b.id&&o.roomId==rid&&['confirmed','checkin'].includes(o.status)&&o.arrive<b.depart&&b.arrive<o.depart))return alert('هذه الغرفة محجوزة في الفترة نفسها');
+try{await updateDoc(doc(db,'bookings',b.id),{status:st,roomId:rid,paid,history:arrayUnion({at:Date.now(),by:auth.currentUser.email,from:b.status,to:st,paid})});
+if(rid&&(st=='checkin'||st=='checkout'))await updateDoc(doc(db,'rooms',rid),{status:st=='checkin'?'occupied':'cleaning'});
+$('#dg').close();bookings()}catch(e){alert('تعذر الحفظ: '+e.message)}}}}
+async function render(){$('#tb').innerHTML=TABS.filter(t=>!t[2]||(t[2]=='owner'?me.role=='owner':can(t[2]))).map(t=>`<button class="${tab==t[0]?'on':''}" data-t="${t[0]}">${t[1]}</button>`).join('')+`<button data-t="out">خروج</button>`;
+$('#v').onclick=null;
+try{await({dash,bookings,settings}[tab]||(()=>crud(tab)))()}catch(e){$('#v').innerHTML=`<p class="empty">لا تملك صلاحية هذا القسم أو حدث خطأ: ${esc(e.message)}</p>`}}
+$('#tb').onclick=e=>{const t=e.target.dataset.t;if(t=='out')return signOut(auth);if(t){tab=t;render()}};
+$('#go').onclick=async()=>{note('');try{await signInWithEmailAndPassword(auth,$('#em').value.trim(),$('#pw').value)}catch(e){note('البريد أو كلمة المرور غير صحيحة.')}};
+if(ready)onAuthStateChanged(auth,async u=>{if(!u){$('#lg').hidden=false;$('#ap').hidden=true;return}
+const a=await getDoc(doc(db,'admins',u.uid)).catch(()=>null);
+if(!a||!a.exists()){note(`حسابك غير مسجّل كمسؤول. معرّفك: <b>${esc(u.uid)}</b><br>أرسله لمالك النظام ليضيفك.`);signOut(auth);return}
+me=a.data();cfg=(await getDoc(doc(db,'settings','hotel')).catch(()=>null))?.data?.()||{};
+$('#lg').hidden=true;$('#ap').hidden=false;render()});
+</script></body></html>
