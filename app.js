@@ -1,0 +1,12 @@
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {getFirestore} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {getAuth} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {firebaseConfig as c} from "./firebase-config.js";
+export const ready = !!(c.apiKey && c.projectId);
+const app = ready ? initializeApp(c) : null;
+export const db = app && getFirestore(app), auth = app && getAuth(app);
+export const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+export const url = u => /^https?:\/\//i.test(u || '') ? u : '';
+export const money = (n, cur) => (+n || 0).toLocaleString('ar-EG') + ' ' + (cur || '');
+export const nights = (a, d) => Math.max(1, Math.round((new Date(d) - new Date(a)) / 864e5));
+export const ST = {new:'جديد', review:'قيد المراجعة', confirmed:'مؤكد', checkin:'تسجيل وصول', checkout:'تسجيل مغادرة', cancelled:'ملغي', rejected:'مرفوض'};
